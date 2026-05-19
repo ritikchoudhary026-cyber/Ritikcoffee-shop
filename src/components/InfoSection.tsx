@@ -44,6 +44,11 @@ export default function InfoSection() {
   const [error, setError] = useState('');
   // OTP is always sent to email — never shown on screen
 
+  // Resend OTP cooldown
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendSuccess, setResendSuccess] = useState(false);
+
   // Auth state
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -57,6 +62,44 @@ export default function InfoSection() {
   const [editName, setEditName] = useState('');
   const [editFile, setEditFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Countdown timer for resend OTP
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setTimeout(() => setResendCooldown(c => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
+
+  // Resend OTP handler
+  const handleResendOtp = async () => {
+    if (resendCooldown > 0 || resendLoading) return;
+    setResendLoading(true);
+    setResendSuccess(false);
+    setError('');
+    try {
+      const res = await fetch('/api/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contact: normalizeContact(contact) }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setResendCooldown(30);
+      setResendSuccess(true);
+      setTimeout(() => setResendSuccess(false), 3000);
+    } catch (err: any) {
+      setError(err.message || 'Failed to resend OTP');
+    }
+    setResendLoading(false);
+  };
+
+  // Start cooldown whenever we enter an OTP step
+  useEffect(() => {
+    if (step === 'otp' || step === 'signup_otp' || step === 'forgot_otp') {
+      setResendCooldown(30);
+      setResendSuccess(false);
+    }
+  }, [step]);
 
   // Fetch orders for a user
   const fetchOrders = async (email: string) => {
@@ -735,7 +778,7 @@ export default function InfoSection() {
             {step === 'otp' && (
               <form className="space-y-4" onSubmit={handleVerifyOtp}>
                 <p className="text-white/50 text-sm">
-                  We sent a 6-digit OTP to <span className="text-white">{normalizeContact(contact)}</span>. Check your inbox.
+                  We sent a 6-digit OTP to <span className="text-white">{normalizeContact(contact)}</span>. Check your inbox (or spam folder).
                 </p>
                 <input
                   type="text" inputMode="numeric" value={otp}
@@ -744,6 +787,22 @@ export default function InfoSection() {
                   className={`${inputClass} text-center tracking-[0.6em] text-xl`}
                 />
                 <button disabled={loading} className={btnGold}>{loading ? 'Verifying…' : 'Verify & Log In'}</button>
+                <div className="flex items-center justify-center gap-2 pt-1">
+                  {resendSuccess ? (
+                    <span className="text-green-400 text-sm">✓ OTP resent! Check your inbox.</span>
+                  ) : resendCooldown > 0 ? (
+                    <span className="text-white/30 text-sm">Resend OTP in <span className="text-white/50 font-mono">{resendCooldown}s</span></span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleResendOtp}
+                      disabled={resendLoading}
+                      className="text-[#EAC678] text-sm hover:underline disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+                    >
+                      {resendLoading ? 'Sending…' : '↻ Resend OTP'}
+                    </button>
+                  )}
+                </div>
                 <button type="button" onClick={() => { setStep('password_check'); setOtp(''); setError(''); }} className="w-full py-2 text-white/40 hover:text-white text-sm transition-colors">← Back</button>
               </form>
             )}
@@ -752,7 +811,7 @@ export default function InfoSection() {
             {step === 'signup_otp' && (
               <form className="space-y-4" onSubmit={handleVerifyOtp}>
                 <p className="text-white/50 text-sm">
-                  OTP sent to <span className="text-white">{normalizeContact(contact)}</span>. Check your inbox and enter the 6-digit code to activate your account.
+                  OTP sent to <span className="text-white">{normalizeContact(contact)}</span>. Check your inbox (or spam folder) and enter the 6-digit code to activate your account.
                 </p>
                 <input
                   type="text" inputMode="numeric" value={otp}
@@ -761,6 +820,22 @@ export default function InfoSection() {
                   className={`${inputClass} text-center tracking-[0.6em] text-xl`}
                 />
                 <button disabled={loading} className={btnGold}>{loading ? 'Verifying…' : 'Verify & Create Account'}</button>
+                <div className="flex items-center justify-center gap-2 pt-1">
+                  {resendSuccess ? (
+                    <span className="text-green-400 text-sm">✓ OTP resent! Check your inbox.</span>
+                  ) : resendCooldown > 0 ? (
+                    <span className="text-white/30 text-sm">Resend OTP in <span className="text-white/50 font-mono">{resendCooldown}s</span></span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleResendOtp}
+                      disabled={resendLoading}
+                      className="text-[#EAC678] text-sm hover:underline disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+                    >
+                      {resendLoading ? 'Sending…' : '↻ Resend OTP'}
+                    </button>
+                  )}
+                </div>
               </form>
             )}
 
@@ -785,7 +860,7 @@ export default function InfoSection() {
             {step === 'forgot_otp' && (
               <form className="space-y-4" onSubmit={handleForgotVerifyOtp}>
                 <p className="text-white/50 text-sm">
-                  OTP sent to <span className="text-white">{normalizeContact(contact)}</span>. Check your inbox.
+                  OTP sent to <span className="text-white">{normalizeContact(contact)}</span>. Check your inbox (or spam folder).
                 </p>
                 <input
                   type="text" inputMode="numeric" value={otp}
@@ -794,6 +869,22 @@ export default function InfoSection() {
                   className={`${inputClass} text-center tracking-[0.6em] text-xl`}
                 />
                 <button disabled={loading} className={btnGold}>{loading ? 'Verifying…' : 'Verify OTP'}</button>
+                <div className="flex items-center justify-center gap-2 pt-1">
+                  {resendSuccess ? (
+                    <span className="text-green-400 text-sm">✓ OTP resent! Check your inbox.</span>
+                  ) : resendCooldown > 0 ? (
+                    <span className="text-white/30 text-sm">Resend OTP in <span className="text-white/50 font-mono">{resendCooldown}s</span></span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleResendOtp}
+                      disabled={resendLoading}
+                      className="text-[#EAC678] text-sm hover:underline disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+                    >
+                      {resendLoading ? 'Sending…' : '↻ Resend OTP'}
+                    </button>
+                  )}
+                </div>
                 <button type="button" onClick={() => { setStep('forgot'); setError(''); }} className="w-full py-2 text-white/40 hover:text-white text-sm transition-colors">← Back</button>
               </form>
             )}
