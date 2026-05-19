@@ -7,7 +7,8 @@ import {
   onAuthStateChanged,
   User,
   signInWithEmailAndPassword,
-  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   updateProfile,
   signOut
 } from 'firebase/auth';
@@ -119,6 +120,38 @@ export default function InfoSection() {
     setOrdersLoading(false);
   };
 
+  // Handle redirect result from Google sign-in
+  useEffect(() => {
+    getRedirectResult(auth).then(async (result) => {
+      if (!result) return;
+      const gUser = result.user;
+      const email = gUser.email || '';
+      const userDocRef = doc(db, 'users', email);
+      const userDoc = await getDoc(userDocRef);
+      if (!userDoc.exists()) {
+        await setDoc(userDocRef, {
+          name: gUser.displayName || '',
+          contact: email,
+          isEmail: 'true',
+          email,
+          phone: '',
+          photoURL: gUser.photoURL || '',
+          memberSince: String(new Date().getFullYear()),
+          brewPoints: 100,
+          uid: gUser.uid,
+          createdAt: new Date().toISOString(),
+        });
+      }
+      const data = (await getDoc(userDocRef)).data();
+      if (data) setProfile(data as UserProfile);
+      setStep('logged_in');
+    }).catch((err) => {
+      if (err.code !== 'auth/no-current-user') {
+        console.error('Redirect result error:', err.code, err.message);
+      }
+    });
+  }, []);
+
   // Listen to Firebase Auth state changes
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -154,55 +187,27 @@ export default function InfoSection() {
 
   // ─── SIGNUP FLOW ─────────────────────────────────────────────────────────────
 
-  // Google Sign-In
+  // Google Sign-In (redirect-based — works on all domains)
   const handleGoogleSignIn = async () => {
     setLoading(true);
     setError('');
     try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const gUser = result.user;
-      const email = gUser.email || '';
-      // Upsert profile in Firestore
-      const userDocRef = doc(db, 'users', email);
-      const userDoc = await getDoc(userDocRef);
-      if (!userDoc.exists()) {
-        await setDoc(userDocRef, {
-          name: gUser.displayName || '',
-          contact: email,
-          isEmail: 'true',
-          email,
-          phone: '',
-          photoURL: gUser.photoURL || '',
-          memberSince: String(new Date().getFullYear()),
-          brewPoints: 100,
-          uid: gUser.uid,
-          createdAt: new Date().toISOString(),
-        });
-      }
-      const data = (await getDoc(userDocRef)).data();
-      if (data) setProfile(data as UserProfile);
-      setStep('logged_in');
+      await signInWithRedirect(auth, googleProvider);
+      // Page will redirect to Google — result handled in useEffect above
     } catch (err: any) {
       console.error('Google sign-in error:', err.code, err.message);
-      // Map Firebase error codes to clear messages
       const code = err.code || '';
-      let msg = `Google sign-in failed (${code || 'unknown'}): ${err.message}`;
+      let msg = `Google sign-in failed (${code}): ${err.message}`;
       if (code === 'auth/unauthorized-domain') {
-        msg = '🔒 This domain is not authorized in Firebase Console. Go to Firebase → Authentication → Settings → Authorized Domains and add "localhost".';
-      } else if (code === 'auth/popup-blocked') {
-        msg = '🚫 Popup was blocked by browser. Please allow popups for this site and try again.';
-      } else if (code === 'auth/popup-closed-by-user') {
-        msg = 'Google sign-in window was closed. Please try again.';
-      } else if (code === 'auth/cancelled-popup-request') {
-        msg = 'Sign-in cancelled. Please try again.';
-      } else if (code === 'auth/network-request-failed') {
-        msg = '🌐 Network error. Check your internet connection and try again.';
+        msg = '🔒 Domain not authorized. Add this domain in Firebase Console → Authentication → Settings → Authorized Domains.';
       } else if (code === 'auth/operation-not-allowed') {
-        msg = '⚠️ Google sign-in is not enabled in Firebase Console. Go to Firebase → Authentication → Sign-in method → Enable Google.';
+        msg = '⚠️ Google sign-in is not enabled. Go to Firebase → Authentication → Sign-in method → Enable Google.';
+      } else if (code === 'auth/network-request-failed') {
+        msg = '🌐 Network error. Check your internet connection.';
       }
       setError(msg);
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleSignup = async (e: React.FormEvent) => {
