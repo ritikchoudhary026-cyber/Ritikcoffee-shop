@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 
 const PROJECT_ID = 'ritik-coffe-db';
 const firestoreBase = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
@@ -22,22 +22,17 @@ async function saveOtp(docId: string, otp: string) {
 }
 
 async function sendEmailOtp(email: string, otp: string): Promise<boolean> {
-  const emailUser = process.env.EMAIL_USER;
-  const emailPass = process.env.EMAIL_PASS;
+  const apiKey = process.env.RESEND_API_KEY;
 
-  if (!emailUser || !emailPass) {
-    // In dev mode — log to server console ONLY, never send to client
-    console.log(`\n📧 [DEV] OTP for ${email} → ${otp} (set EMAIL_USER & EMAIL_PASS in .env.local to send real emails)\n`);
+  if (!apiKey) {
+    console.log(`\n📧 [DEV] OTP for ${email} → ${otp} (set RESEND_API_KEY in .env.local)\n`);
     return true;
   }
 
-  const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: { user: emailUser, pass: emailPass },
-  });
+  const resend = new Resend(apiKey);
 
-  await transporter.sendMail({
-    from: `"Ritik Coffee Shop" <${emailUser}>`,
+  const { error } = await resend.emails.send({
+    from: 'Ritik Coffee Shop <onboarding@resend.dev>',
     to: email,
     subject: '☕ Your OTP – Ritik Coffee Shop',
     html: `
@@ -55,13 +50,19 @@ async function sendEmailOtp(email: string, otp: string): Promise<boolean> {
           ${otp}
         </div>
         <p style="color:#444;font-size:12px;line-height:1.6;margin:0;">
-          If you didn't request this code, you can safely ignore this email. Someone may have typed your email address by mistake.
+          If you didn't request this code, you can safely ignore this email.
         </p>
         <hr style="border:none;border-top:1px solid #1a1a1a;margin-top:32px;margin-bottom:20px;"/>
         <p style="color:#333;font-size:11px;text-align:center;margin:0;">Ritik Coffee Shop · Secure Access System</p>
       </div>
     `,
   });
+
+  if (error) {
+    console.error('Resend error:', error);
+    throw new Error(error.message);
+  }
+
   return true;
 }
 
@@ -70,7 +71,6 @@ export async function POST(request: Request) {
     const { contact } = await request.json();
     if (!contact) return NextResponse.json({ error: 'Email is required' }, { status: 400 });
 
-    // Only email supported now
     const email = contact.trim().toLowerCase();
     if (!email.includes('@')) {
       return NextResponse.json({ error: 'Please enter a valid email address' }, { status: 400 });
@@ -84,7 +84,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Failed to send OTP email' }, { status: 500 });
     }
 
-    // NEVER send OTP back to client — always goes to email only
+    // NEVER send OTP back to client
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error('Error in /api/send-otp:', error);

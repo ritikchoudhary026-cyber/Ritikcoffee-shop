@@ -183,7 +183,24 @@ export default function InfoSection() {
       if (data) setProfile(data as UserProfile);
       setStep('logged_in');
     } catch (err: any) {
-      setError(err.message || 'Google sign-in failed');
+      console.error('Google sign-in error:', err.code, err.message);
+      // Map Firebase error codes to clear messages
+      const code = err.code || '';
+      let msg = `Google sign-in failed (${code || 'unknown'}): ${err.message}`;
+      if (code === 'auth/unauthorized-domain') {
+        msg = '🔒 This domain is not authorized in Firebase Console. Go to Firebase → Authentication → Settings → Authorized Domains and add "localhost".';
+      } else if (code === 'auth/popup-blocked') {
+        msg = '🚫 Popup was blocked by browser. Please allow popups for this site and try again.';
+      } else if (code === 'auth/popup-closed-by-user') {
+        msg = 'Google sign-in window was closed. Please try again.';
+      } else if (code === 'auth/cancelled-popup-request') {
+        msg = 'Sign-in cancelled. Please try again.';
+      } else if (code === 'auth/network-request-failed') {
+        msg = '🌐 Network error. Check your internet connection and try again.';
+      } else if (code === 'auth/operation-not-allowed') {
+        msg = '⚠️ Google sign-in is not enabled in Firebase Console. Go to Firebase → Authentication → Sign-in method → Enable Google.';
+      }
+      setError(msg);
     }
     setLoading(false);
   };
