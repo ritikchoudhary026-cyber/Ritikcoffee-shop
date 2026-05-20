@@ -10,23 +10,28 @@ interface Particle {
   baseR: number;       // Base radius from screen center
   baseAngle: number;   // Base angle around screen center
   rotSpeed: number;    // Rotation speed around center
-  size: number;
+  baseSize: number;    // Original size
+  size: number;        // Current animated size
   color: string;
   phase: number;       // Unique wave phase
   amplitude: number;   // Radial wave amplitude
-  alpha: number;       // Transparency
+  baseAlpha: number;   // Base transparency
+  alpha: number;       // Current animated transparency
+  twinkleSpeed: number;// Speed of twinkling
 }
 
 export default function CustomCursor() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const mouseRef = useRef({ x: -1000, y: -1000, active: false });
 
-  // Google-style primary color palette
+  // Universe/Starry palette: Shades of deep & bright blue, and pure white
   const colors = [
-    '#4285F4', // Google Blue
-    '#EA4335', // Google Red
-    '#FBBC05', // Google Yellow
-    '#34A853', // Google Green
+    '#ffffff', // Pure White
+    '#e0f2fe', // Ice White/Blue
+    '#bae6fd', // Pale Sky Blue
+    '#60a5fa', // Bright Sky Blue
+    '#3b82f6', // Deep Royal Blue
+    '#2563eb', // Indigo Blue
   ];
 
   useEffect(() => {
@@ -80,6 +85,9 @@ export default function CustomCursor() {
         const initialX = cx + Math.cos(angle) * r;
         const initialY = cy + Math.sin(angle) * r;
 
+        const baseSize = Math.random() * 1.2 + 0.6; // 0.6px to 1.8px
+        const baseAlpha = Math.random() * 0.4 + 0.35; // 0.35 to 0.75 base opacity
+
         particles.push({
           x: initialX,
           y: initialY,
@@ -88,11 +96,14 @@ export default function CustomCursor() {
           baseR: r,
           baseAngle: angle,
           rotSpeed,
-          size: Math.random() * 1.5 + 1.0, // Crisp tiny dots
+          baseSize,
+          size: baseSize,
           color: colors[Math.floor(Math.random() * colors.length)],
           phase: Math.random() * Math.PI * 2,
           amplitude: Math.random() * 20 + 8, // Radial wave motion
-          alpha: Math.random() * 0.5 + 0.35, // Premium transparency glow
+          baseAlpha,
+          alpha: baseAlpha,
+          twinkleSpeed: Math.random() * 0.03 + 0.015,
         });
       }
     };
@@ -113,7 +124,6 @@ export default function CustomCursor() {
 
     window.addEventListener('resize', () => {
       resizeCanvas();
-      // Keep particle structure, just recalculate centers
     });
     window.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseleave', handleMouseLeave);
@@ -167,7 +177,12 @@ export default function CustomCursor() {
         p.x += p.vx;
         p.y += p.vy;
 
-        // 4. Render Particle
+        // 4. Twinkling / Star Shine effect (pulsate size and alpha over time)
+        const twinkle = Math.sin(time * p.twinkleSpeed + p.phase);
+        p.alpha = Math.max(0.1, Math.min(1.0, p.baseAlpha + twinkle * 0.3));
+        p.size = Math.max(0.4, p.baseSize + twinkle * (p.baseSize * 0.35));
+
+        // 5. Render Particle
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
         ctx.fillStyle = p.color;
