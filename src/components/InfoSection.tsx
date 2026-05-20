@@ -8,6 +8,7 @@ import {
   User,
   signInWithEmailAndPassword,
   signInWithRedirect,
+  signInWithPopup,
   getRedirectResult,
   updateProfile,
   signOut
@@ -148,6 +149,16 @@ export default function InfoSection() {
     }).catch((err) => {
       if (err.code !== 'auth/no-current-user') {
         console.error('Redirect result error:', err.code, err.message);
+        const code = err.code || '';
+        let msg = `Google sign-in failed (${code}): ${err.message}`;
+        if (code === 'auth/unauthorized-domain') {
+          msg = '🔒 Domain not authorized. Add this domain in Firebase Console → Authentication → Settings → Authorized Domains.';
+        } else if (code === 'auth/operation-not-allowed') {
+          msg = '⚠️ Google sign-in is not enabled. Go to Firebase → Authentication → Sign-in method → Enable Google.';
+        } else if (code === 'auth/network-request-failed') {
+          msg = '🌐 Network error. Check your internet connection.';
+        }
+        setError(msg);
       }
     });
   }, []);
@@ -187,16 +198,49 @@ export default function InfoSection() {
 
   // ─── SIGNUP FLOW ─────────────────────────────────────────────────────────────
 
-  // Google Sign-In (redirect-based — works on all domains)
+  // Google Sign-In (Uses signInWithPopup for reliability, falls back to redirect)
   const handleGoogleSignIn = async () => {
     setLoading(true);
     setError('');
     try {
-      await signInWithRedirect(auth, googleProvider);
-      // Page will redirect to Google — result handled in useEffect above
+      const result = await signInWithPopup(auth, googleProvider);
+      const gUser = result.user;
+      const email = gUser.email || '';
+      const userDocRef = doc(db, 'users', email);
+      const userDoc = await getDoc(userDocRef);
+      if (!userDoc.exists()) {
+        await setDoc(userDocRef, {
+          name: gUser.displayName || '',
+          contact: email,
+          isEmail: 'true',
+          email,
+          phone: '',
+          photoURL: gUser.photoURL || '',
+          memberSince: String(new Date().getFullYear()),
+          brewPoints: 100,
+          uid: gUser.uid,
+          createdAt: new Date().toISOString(),
+        });
+      }
+      const data = (await getDoc(userDocRef)).data();
+      if (data) setProfile(data as UserProfile);
+      setStep('logged_in');
     } catch (err: any) {
       console.error('Google sign-in error:', err.code, err.message);
       const code = err.code || '';
+      
+      // Fallback to redirect if popup is blocked
+      if (code === 'auth/popup-blocked') {
+        try {
+          await signInWithRedirect(auth, googleProvider);
+          return;
+        } catch (redirErr: any) {
+          setError(`Google redirect failed: ${redirErr.message}`);
+          setLoading(false);
+          return;
+        }
+      }
+
       let msg = `Google sign-in failed (${code}): ${err.message}`;
       if (code === 'auth/unauthorized-domain') {
         msg = '🔒 Domain not authorized. Add this domain in Firebase Console → Authentication → Settings → Authorized Domains.';
@@ -206,6 +250,7 @@ export default function InfoSection() {
         msg = '🌐 Network error. Check your internet connection.';
       }
       setError(msg);
+    } finally {
       setLoading(false);
     }
   };
