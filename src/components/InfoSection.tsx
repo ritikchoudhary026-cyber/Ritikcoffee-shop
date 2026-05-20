@@ -126,15 +126,16 @@ export default function InfoSection() {
     getRedirectResult(auth).then(async (result) => {
       if (!result) return;
       const gUser = result.user;
-      const email = gUser.email || '';
-      const userDocRef = doc(db, 'users', email);
+      const email = gUser.email || gUser.providerData[0]?.email || '';
+      const docId = email || gUser.uid;
+      const userDocRef = doc(db, 'users', docId);
       const userDoc = await getDoc(userDocRef);
       if (!userDoc.exists()) {
         await setDoc(userDocRef, {
           name: gUser.displayName || '',
-          contact: email,
-          isEmail: 'true',
-          email,
+          contact: email || gUser.uid,
+          isEmail: email ? 'true' : 'false',
+          email: email || '',
           phone: '',
           photoURL: gUser.photoURL || '',
           memberSince: String(new Date().getFullYear()),
@@ -170,18 +171,54 @@ export default function InfoSection() {
       if (currentUser) {
         setStep('logged_in');
         const emailPhone = currentUser.email?.replace('@coffeeapp.app', '') || '';
-        if (emailPhone) {
-          try {
+        try {
+          let profileDoc: any = null;
+          let searchKey = '';
+          
+          if (emailPhone) {
             const userDocRef = doc(db, 'users', emailPhone);
             const userDoc = await getDoc(userDocRef);
             if (userDoc.exists()) {
-              setProfile(userDoc.data() as UserProfile);
+              profileDoc = userDoc.data();
+              searchKey = emailPhone;
             }
-            // Fetch this user's orders
-            await fetchOrders(emailPhone);
-          } catch (e) {
-            console.error('Error fetching profile', e);
           }
+          
+          if (!profileDoc && currentUser.uid) {
+            const userDocRef = doc(db, 'users', currentUser.uid);
+            const userDoc = await getDoc(userDocRef);
+            if (userDoc.exists()) {
+              profileDoc = userDoc.data();
+              searchKey = currentUser.uid;
+            }
+          }
+          
+          if (profileDoc) {
+            setProfile(profileDoc as UserProfile);
+            await fetchOrders(searchKey);
+          } else {
+            // Auto-create a profile document if it doesn't exist
+            const docId = emailPhone || currentUser.uid;
+            const userDocRef = doc(db, 'users', docId);
+            const isEmail = emailPhone.includes('@') ? 'true' : 'false';
+            const newProfile = {
+              name: currentUser.displayName || 'Coffee Lover',
+              contact: emailPhone || currentUser.uid,
+              isEmail,
+              email: emailPhone.includes('@') ? emailPhone : '',
+              phone: emailPhone.includes('@') ? '' : emailPhone,
+              photoURL: currentUser.photoURL || '',
+              memberSince: String(new Date().getFullYear()),
+              brewPoints: 100,
+              uid: currentUser.uid,
+              createdAt: new Date().toISOString(),
+            };
+            await setDoc(userDocRef, newProfile);
+            setProfile(newProfile as UserProfile);
+            await fetchOrders(docId);
+          }
+        } catch (e) {
+          console.error('Error fetching profile', e);
         }
       } else {
         setProfile(null);
@@ -205,15 +242,16 @@ export default function InfoSection() {
     try {
       const result = await signInWithPopup(auth, googleProvider);
       const gUser = result.user;
-      const email = gUser.email || '';
-      const userDocRef = doc(db, 'users', email);
+      const email = gUser.email || gUser.providerData[0]?.email || '';
+      const docId = email || gUser.uid;
+      const userDocRef = doc(db, 'users', docId);
       const userDoc = await getDoc(userDocRef);
       if (!userDoc.exists()) {
         await setDoc(userDocRef, {
           name: gUser.displayName || '',
-          contact: email,
-          isEmail: 'true',
-          email,
+          contact: email || gUser.uid,
+          isEmail: email ? 'true' : 'false',
+          email: email || '',
           phone: '',
           photoURL: gUser.photoURL || '',
           memberSince: String(new Date().getFullYear()),
